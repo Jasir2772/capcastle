@@ -1,0 +1,14 @@
+name: CapCastle
+version: 1.0.0
+main: uz.capmine.castle.CapCastle
+api-version: '1.19'
+author: CapMine
+description: Premium Castle Event by CapMine
+commands:
+  capcastle:
+    description: Castle eventini to'liq boshqarish
+    aliases: [cc, castle]
+permissions:
+  capcastle.admin:
+    description: Admin huquqlari
+    default: op
