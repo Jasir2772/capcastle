@@ -1,21 +1,21 @@
 types:
   oddiy:
-    name: '&aOddiy Shulker'
+    name: '&#00FF00Oddiy Shulker'
     material: LIME_SHULKER_BOX
     break-count: 20
   sehrli:
-    name: '&5Sehrli Shulker'
+    name: '&#AA00AASehrli Shulker'
     material: PURPLE_SHULKER_BOX
     break-count: 40
   qonli:
-    name: '&cQonli Shulker'
+    name: '&#FF0000Qonli Shulker'
     material: RED_SHULKER_BOX
     break-count: 60
   afsonaviy:
-    name: '&6Afsonaviy Shulker'
+    name: '&#FFAA00Afsonaviy Shulker'
     material: ORANGE_SHULKER_BOX
     break-count: 80
   qora_imperator:
-    name: '&8Qora Imperator Shulker'
+    name: '&#333333Qora Imperator Shulker'
     material: BLACK_SHULKER_BOX
     break-count: 100
