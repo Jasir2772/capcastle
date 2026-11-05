@@ -1,8 +1,7 @@
 settings:
   # Qutilar qancha vaqtda yangilanadi (daqiqada)
   refresh-minutes: 5
-  # Bir vaqtda nechta quti paydo bo'ladi
-  max-shulkers: 40
-
-# Admin /capcastle setloc qilganda shu yerga saqlanadi
-spawn-locations: [] 
+  # Har bir qutini sindirish uchun ketadigan vaqt (default)
+  
+# Admin /capcastle setloc <tur> qilganda shu yerga saqlanadi
+spawn-locations: []
