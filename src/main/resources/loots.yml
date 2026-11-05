@@ -1,0 +1,17 @@
+loots:
+  oddiy:
+    - "IRON_INGOT:5:80"
+    - "GOLD_INGOT:3:50"
+  sehrli:
+    - "DIAMOND:2:50"
+    - "EXPERIENCE_BOTTLE:8:80"
+  qonli:
+    - "DIAMOND:5:80"
+    - "NETHERITE_SCRAP:1:30"
+  afsonaviy:
+    - "NETHERITE_INGOT:1:20"
+    - "ELYTRA:1:5"
+  qora_imperator:
+    - "NETHERITE_INGOT:3:50"
+    - "ENCHANTED_GOLDEN_APPLE:2:80"
+    - "NETHERITE_BLOCK:1:10"
