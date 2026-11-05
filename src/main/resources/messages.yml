@@ -1,0 +1,12 @@
+messages:
+  prefix: '&#FF0000CapCastle &8» '
+  no-permission: '&#FF0000Sizda ruxsat yo''q!'
+  only-pickaxe: '&cFaqat pickaxe (ketmon) yoki qo''l bilan sindirishingiz mumkin!'
+  
+  # Qutining tepasidagi yozuv
+  shulker-hologram:
+    - '{type_name}'
+    - '&#FFFFFFSINDIRISH: &#FFD700{current}/{max}'
+    
+  shulker-broken: '&#FFD700[CapCastle] &#FFFFFF{player} &#FFD700{type_name} &fqutisini sindirdi!'
+  event-started: '&#00FF00Castle Event boshlandi! Shalker qutilarini sindiring!' 
