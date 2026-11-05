@@ -5,7 +5,6 @@ import org.bukkit.block.Block;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.ArmorStand;
@@ -24,12 +23,10 @@ import java.util.*;
 public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
 
     private final Map<String, Integer> blockHits = new HashMap<>();
-    private final Map<String, String> blockTypes = new HashMap<>(); // LocStr -> Type
+    private final Map<String, String> blockTypes = new HashMap<>();
     private final Map<String, ArmorStand> holograms = new HashMap<>();
-    
     private final Set<String> activeBlocks = new HashSet<>();
     private boolean eventActive = false;
-    
     private final String[] typeList = {"oddiy", "sehrli", "qonli", "afsonaviy", "qora_imperator"};
 
     @Override
@@ -41,8 +38,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
 
         this.getCommand("capcastle").setExecutor(this);
         getServer().getPluginManager().registerEvents(this, this);
-
-        getLogger().info("CapCastle tizimi yoqildi!");
+        getLogger().info("CapCastle tizimi muvaffaqiyatli yoqildi!");
     }
 
     public void startEvent() {
@@ -79,11 +75,13 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         blockTypes.clear();
 
         List<Location> locations = getSpawnLocations();
-        if (locations.isEmpty()) return;
+        if (locations.isEmpty()) {
+            getLogger().warning("Hech qanday spawn joyi yo'q! /capcastle setloc qiling.");
+            return;
+        }
 
         int maxShulkers = getConfig().getInt("settings.max-shulkers", 40);
         Random random = new Random();
-        
         FileConfiguration shulkersFile = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "shulkers.yml"));
 
         for (int i = 0; i < maxShulkers; i++) {
@@ -95,7 +93,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             loc.getBlock().setType(Material.valueOf(materialStr));
             
             String locStr = locationToString(loc);
-            
             activeBlocks.add(locStr);
             blockHits.put(locStr, 0);
             blockTypes.put(locStr, type);
@@ -120,10 +117,11 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         Player player = event.getPlayer();
         ItemStack itemInHand = player.getInventory().getItemInMainHand();
 
-        // Faqat pickaxe yoki qo'l
+        // Faqat pickaxe yoki qo'l bilan urishni tekshirish
         if (itemInHand.getType() != Material.AIR && !itemInHand.getType().name().endsWith("_PICKAXE")) {
             event.setCancelled(true);
-            player.sendMessage(color(YamlConfiguration.loadConfiguration(new File(getDataFolder(), "messages.yml")).getString("messages.only-pickaxe", "&cFaqat pickaxe!")));
+            FileConfiguration msg = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "messages.yml"));
+            player.sendMessage(color(msg.getString("messages.only-pickaxe", "&cFaqat pickaxe yoki qo'l!")));
             return;
         }
 
@@ -132,7 +130,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         int maxHits = getMaxHits(type);
 
         blockHits.put(locStr, currentHits);
-
         block.getWorld().playSound(block.getLocation(), Sound.BLOCK_STONE_HIT, 1f, 1f);
         
         if (holograms.containsKey(locStr)) {
@@ -141,8 +138,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
 
         if (currentHits < maxHits) {
             event.setCancelled(true);
-            // Blokning vizual sindirilishini tozalash
-            player.sendBlockDamage(block.getLocation(), 0f);
         } else {
             event.setDropItems(false); 
             activeBlocks.remove(locStr);
@@ -155,14 +150,14 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             }
             
             block.setType(Material.AIR);
-            block.getWorld().playSound(block.getLocation(), Sound.ENTITY_SHULKER_BOX_OPEN, 1f, 1f);
+            // OVOZ XATOSI TO'G'RILANDI:
+            block.getWorld().playSound(block.getLocation(), Sound.BLOCK_SHULKER_BOX_OPEN, 1f, 1f);
             
             dropLoot(block.getLocation(), type);
             
             FileConfiguration msg = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "messages.yml"));
-            String typeName = getTypeName(type);
             String brokenMsg = msg.getString("messages.shulker-broken", "&e{player} qutini sindirdi!")
-                    .replace("{player}", player.getName()).replace("{type_name}", typeName);
+                    .replace("{player}", player.getName()).replace("{type_name}", getTypeName(type));
             Bukkit.broadcastMessage(color(msg.getString("messages.prefix", "") + brokenMsg));
         }
     }
@@ -186,7 +181,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }
     }
 
-    // --- YORDAMCHI METODLAR ---
     private String getTypeName(String type) {
         FileConfiguration shulkersFile = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "shulkers.yml"));
         return color(shulkersFile.getString("types." + type + ".name", type));
@@ -237,6 +231,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
     }
 
     private String color(String text) {
+        if(text == null) return "";
         return ChatColor.translateAlternateColorCodes('&', text);
     }
 
@@ -306,4 +301,4 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }
         return true;
     }
-  }
+                                         }
