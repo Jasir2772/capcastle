@@ -66,7 +66,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
     }
 
     private void refreshBlocks() {
-        // Eski bloklarni va hologrammalarni tozalash
         for (String locStr : activeBlocks) {
             Location loc = stringToLocation(locStr);
             if (loc != null && loc.getBlock().getType() != Material.AIR) {
@@ -92,7 +91,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
                 World world = Bukkit.getWorld(parts[0]);
                 if (world == null) continue;
                 
-                // Bloklash uchun aniq koordinatalar (blok markazi)
                 double x = Double.parseDouble(parts[1]);
                 double y = Double.parseDouble(parts[2]);
                 double z = Double.parseDouble(parts[3]);
@@ -105,7 +103,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
                 loc.getBlock().setType(Material.valueOf(materialStr));
                 
                 activeBlocks.add(locStr);
-                blockHits.put(locStr, 0);
+                blockHits.put(locStr, 0); // Ichki hisob 0 dan boshlanadi
                 blockTypes.put(locStr, type);
 
                 createHologram(loc, type, 0);
@@ -113,7 +111,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }
     }
 
-    private void createHologram(Location blockLoc, String type, int current) {
+    private void createHologram(Location blockLoc, String type, int currentHits) {
         String locStr = locationToString(blockLoc);
         
         if (holograms.containsKey(locStr)) {
@@ -122,31 +120,29 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
 
         List<ArmorStand> stands = new ArrayList<>();
         
-        // 1-qator (Nomi) - Blokning aniq o'rtasiga
         Location loc1 = blockLoc.clone().add(0.5, 1.3, 0.5);
         ArmorStand nameStand = (ArmorStand) blockLoc.getWorld().spawnEntity(loc1, EntityType.ARMOR_STAND);
         nameStand.setCustomNameVisible(true);
         nameStand.setInvulnerable(true);
         nameStand.setGravity(false);
         nameStand.setMarker(true);
-        nameStand.setVisible(false); // Ko'rinmas
+        nameStand.setVisible(false); 
         stands.add(nameStand);
 
-        // 2-qator (Sindirish) - Blokning aniq o'rtasiga
         Location loc2 = blockLoc.clone().add(0.5, 1.0, 0.5);
         ArmorStand countStand = (ArmorStand) blockLoc.getWorld().spawnEntity(loc2, EntityType.ARMOR_STAND);
         countStand.setCustomNameVisible(true);
         countStand.setInvulnerable(true);
         countStand.setGravity(false);
         countStand.setMarker(true);
-        countStand.setVisible(false); // Ko'rinmas
+        countStand.setVisible(false); 
         stands.add(countStand);
         
         holograms.put(locStr, stands);
-        updateHologram(locStr, type, current);
+        updateHologram(locStr, type, currentHits);
     }
 
-    private void updateHologram(String locStr, String type, int current) {
+    private void updateHologram(String locStr, String type, int currentHits) {
         if (!holograms.containsKey(locStr)) return;
         
         FileConfiguration msg = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "messages.yml"));
@@ -154,16 +150,20 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         int maxHits = getMaxHits(type);
         String typeName = getTypeName(type);
 
+        // TESKARI HISOBLASH: Qolgan urishlar sonini hisoblaymiz
+        int remainingHits = maxHits - currentHits;
+        if (remainingHits < 0) remainingHits = 0;
+
         if (lines.size() >= 2 && holograms.get(locStr).size() >= 2) {
             String line1 = color(lines.get(0).replace("{type_name}", typeName));
-            String line2 = color(lines.get(1).replace("{current}", String.valueOf(current)).replace("{max}", String.valueOf(maxHits)));
+            // {current} o'rniga qolgan urishlar sonini qo'yamiz
+            String line2 = color(lines.get(1).replace("{current}", String.valueOf(remainingHits)).replace("{max}", String.valueOf(maxHits)));
             
             holograms.get(locStr).get(0).setCustomName(line1);
             holograms.get(locStr).get(1).setCustomName(line2);
         }
     }
 
-    // BLOKNI SINDIRISHNI USHLAB QOLISH VA HISOBLASH
     @EventHandler
     public void onBlockBreak(BlockBreakEvent event) {
         Block block = event.getBlock();
@@ -171,13 +171,11 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
 
         if (!activeBlocks.contains(locStr)) return;
 
-        // 1. O'yin avtomatik sindirishini to'xtatamiz (Quti tushib ketmasligi uchun)
         event.setCancelled(true);
 
         Player player = event.getPlayer();
         ItemStack itemInHand = player.getInventory().getItemInMainHand();
 
-        // 2. Faqat pickaxe yoki qo'l bilan urishni tekshirish
         if (itemInHand.getType() != Material.AIR && !itemInHand.getType().name().endsWith("_PICKAXE")) {
             FileConfiguration msg = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "messages.yml"));
             player.sendMessage(color(msg.getString("messages.only-pickaxe", "&cFaqat pickaxe!")));
@@ -193,7 +191,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         
         updateHologram(locStr, type, currentHits);
 
-        // 3. Agar urishlar soni yetgan bo'lsa, qutini o'zimiz sindiramiz
+        // Agar ichki hisob maksimalga yetgan bo'lsa (ya'ni qolgani 0 bo'lsa)
         if (currentHits >= maxHits) {
             activeBlocks.remove(locStr);
             blockHits.remove(locStr);
@@ -204,17 +202,17 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
                 holograms.remove(locStr);
             }
             
-            // Blokni havoga aylantiramiz (tushmaydi, chunki setDropItems yo'q)
             block.setType(Material.AIR);
             block.getWorld().playSound(block.getLocation(), Sound.BLOCK_SHULKER_BOX_OPEN, 1f, 1f);
             
-            // Faqat o'zimizning lootlarni tushiramiz
             dropLoot(block.getLocation().add(0.5, 0.5, 0.5), type);
             
             FileConfiguration msg = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "messages.yml"));
             String brokenMsg = msg.getString("messages.shulker-broken", "&e{player} qutini sindirdi!")
                     .replace("{player}", player.getName()).replace("{type_name}", getTypeName(type));
-            Bukkit.broadcastMessage(color(msg.getString("messages.prefix", "") + brokenMsg));
+            
+            // XABAR TO'G'RILANDI: Faqatgina sariq rangli yozuv chiqadi (prefix olib tashlandi)
+            Bukkit.broadcastMessage(color(brokenMsg));
         }
     }
 
@@ -237,7 +235,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }
     }
 
-    // --- GUI (MENU) TIZIMI ---
     @EventHandler
     public void onMenuClick(InventoryClickEvent event) {
         String title = event.getView().getTitle();
@@ -275,7 +272,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             return;
         }
 
-        // Faqat ro'yxatdagi narsalarni o'chirish
         if (clicked.getType() != Material.CHEST && clicked.getType() != Material.BARRIER && event.getSlot() < 45) {
             FileConfiguration loots = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "loots.yml"));
             List<String> list = loots.getStringList("loots." + type);
@@ -340,7 +336,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         p.openInventory(inv);
     }
 
-    // --- YORDAMCHI METODLAR ---
     private String getTypeName(String type) {
         FileConfiguration shulkersFile = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "shulkers.yml"));
         return color(shulkersFile.getString("types." + type + ".name", type));
@@ -395,7 +390,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
                     return true;
                 }
                 
-                // O'yinchi turgan blokni olamiz
                 Location playerLoc = p.getLocation();
                 String locStr = playerLoc.getWorld().getName() + ":" + playerLoc.getX() + ":" + playerLoc.getY() + ":" + playerLoc.getZ() + ":" + type;
                 List<String> locs = getConfig().getStringList("spawn-locations");
@@ -444,7 +438,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         return true;
     }
 
-    // HEX ranglarini to'g'ri o'qish
     private String color(String text) {
         if (text == null) return "";
         Pattern pattern = Pattern.compile("&#([A-Fa-f0-9]{6})");
@@ -459,4 +452,4 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         matcher.appendTail(buffer);
         return net.md_5.bungee.api.ChatColor.translateAlternateColorCodes('&', buffer.toString());
     }
-    }
+            } 
