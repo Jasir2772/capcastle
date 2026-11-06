@@ -452,4 +452,4 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         matcher.appendTail(buffer);
         return net.md_5.bungee.api.ChatColor.translateAlternateColorCodes('&', buffer.toString());
     }
-            } 
+    }
