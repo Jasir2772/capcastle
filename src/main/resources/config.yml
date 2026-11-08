@@ -1,7 +1,6 @@
 settings:
-  # Qutilar qancha vaqtda yangilanadi (daqiqada)
-  refresh-minutes: 5
-  # Har bir qutini sindirish uchun ketadigan vaqt (default)
-  
-# Admin /capcastle setloc <tur> qilganda shu yerga saqlanadi
+  # Shalker sinib bo'lgandan keyin necha daqiqada qayta tiklanishi
+  respawn-minutes: 5
+
+# Faqat joylashuvlar saqlanadi (turi avtomatik tanlanadi)
 spawn-locations: []
