@@ -13,6 +13,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.inventory.ClickType;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -33,7 +34,8 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
     private final Set<String> activeBlocks = new HashSet<>();
     private final Map<UUID, String> editingLoot = new HashMap<>();
     
-    private boolean eventActive = false;
+    // 5 xil shalker ro'yxati
+    private final List<String> allTypes = Arrays.asList("oddiy", "sehrli", "qonli", "afsonaviy", "qora_imperator");
 
     @Override
     public void onEnable() {
@@ -45,46 +47,29 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         this.getCommand("capcastle").setExecutor(this);
         getServer().getPluginManager().registerEvents(this, this);
         getLogger().info("CapCastle tizimi muvaffaqiyatli yoqildi!");
+        
+        startParticleTask(); // Nur effektini yoqish
+        loadInitialBlocks(); // Server yoqilganda qutilarni tiklash
     }
 
-    public void startEvent() {
-        if (eventActive) return;
-        eventActive = true;
-        
-        long refreshMinutes = getConfig().getLong("settings.refresh-minutes", 5);
-        long ticks = refreshMinutes * 60 * 20;
-
+    // NUR EFFEKTI (Shalkerlarni oson topish uchun)
+    private void startParticleTask() {
         new BukkitRunnable() {
             @Override
             public void run() {
-                if (!eventActive) { this.cancel(); return; }
-                refreshBlocks();
+                for (String locStr : activeBlocks) {
+                    Location loc = stringToLocation(locStr);
+                    if (loc != null) {
+                        // Har yarim sekundda oq yulduzchalar (END_ROD) sochiladi
+                        loc.getWorld().spawnParticle(Particle.END_ROD, loc.clone().add(0.5, 1.5, 0.5), 3, 0.3, 0.3, 0.3, 0.01);
+                    }
+                }
             }
-        }.runTaskTimer(this, 0L, ticks);
-        
-        refreshBlocks();
+        }.runTaskTimer(this, 0L, 10L); 
     }
 
-    private void refreshBlocks() {
-        for (String locStr : activeBlocks) {
-            Location loc = stringToLocation(locStr);
-            if (loc != null && loc.getBlock().getType() != Material.AIR) {
-                loc.getBlock().setType(Material.AIR);
-            }
-            if (holograms.containsKey(locStr)) {
-                for (ArmorStand as : holograms.get(locStr)) as.remove();
-                holograms.remove(locStr);
-            }
-        }
-        activeBlocks.clear();
-        blockHits.clear();
-        blockTypes.clear();
-
+    private void loadInitialBlocks() {
         List<String> rawLocs = getConfig().getStringList("spawn-locations");
-        if (rawLocs.isEmpty()) return;
-
-        FileConfiguration shulkersFile = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "shulkers.yml"));
-
         for (String rawLoc : rawLocs) {
             String[] parts = rawLoc.split(":");
             if (parts.length == 5) {
@@ -97,18 +82,27 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
                 String type = parts[4];
                 
                 Location loc = new Location(world, Math.floor(x), Math.floor(y), Math.floor(z));
-                String locStr = locationToString(loc);
-                
-                String materialStr = shulkersFile.getString("types." + type + ".material", "SHULKER_BOX");
-                loc.getBlock().setType(Material.valueOf(materialStr));
-                
-                activeBlocks.add(locStr);
-                blockHits.put(locStr, 0); // Ichki hisob 0 dan boshlanadi
-                blockTypes.put(locStr, type);
-
-                createHologram(loc, type, 0);
+                spawnShulker(loc, type);
             }
         }
+    }
+
+    private void spawnShulker(Location loc, String type) {
+        if (type.equalsIgnoreCase("random")) {
+            type = allTypes.get(new Random().nextInt(allTypes.size()));
+        }
+
+        String locStr = locationToString(loc);
+        FileConfiguration shulkersFile = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "shulkers.yml"));
+        
+        String materialStr = shulkersFile.getString("types." + type + ".material", "SHULKER_BOX");
+        loc.getBlock().setType(Material.valueOf(materialStr));
+        
+        activeBlocks.add(locStr);
+        blockHits.put(locStr, 0);
+        blockTypes.put(locStr, type);
+
+        createHologram(loc, type, 0);
     }
 
     private void createHologram(Location blockLoc, String type, int currentHits) {
@@ -150,13 +144,11 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         int maxHits = getMaxHits(type);
         String typeName = getTypeName(type);
 
-        // TESKARI HISOBLASH: Qolgan urishlar sonini hisoblaymiz
         int remainingHits = maxHits - currentHits;
         if (remainingHits < 0) remainingHits = 0;
 
         if (lines.size() >= 2 && holograms.get(locStr).size() >= 2) {
             String line1 = color(lines.get(0).replace("{type_name}", typeName));
-            // {current} o'rniga qolgan urishlar sonini qo'yamiz
             String line2 = color(lines.get(1).replace("{current}", String.valueOf(remainingHits)).replace("{max}", String.valueOf(maxHits)));
             
             holograms.get(locStr).get(0).setCustomName(line1);
@@ -171,7 +163,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
 
         if (!activeBlocks.contains(locStr)) return;
 
-        event.setCancelled(true);
+        event.setCancelled(true); // Blokni o'yin o'zi sindirishini to'xtatamiz
 
         Player player = event.getPlayer();
         ItemStack itemInHand = player.getInventory().getItemInMainHand();
@@ -191,7 +183,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         
         updateHologram(locStr, type, currentHits);
 
-        // Agar ichki hisob maksimalga yetgan bo'lsa (ya'ni qolgani 0 bo'lsa)
+        // Agar qolgan urishlar 0 ga teng bo'lsa (sinish vaqti kelgan bo'lsa)
         if (currentHits >= maxHits) {
             activeBlocks.remove(locStr);
             blockHits.remove(locStr);
@@ -211,8 +203,20 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             String brokenMsg = msg.getString("messages.shulker-broken", "&e{player} qutini sindirdi!")
                     .replace("{player}", player.getName()).replace("{type_name}", getTypeName(type));
             
-            // XABAR TO'G'RILANDI: Faqatgina sariq rangli yozuv chiqadi (prefix olib tashlandi)
             Bukkit.broadcastMessage(color(brokenMsg));
+
+            // 5 DAQIQADAN KEYIN QAYTA TIKLASH TIZIMI
+            Location respawnLoc = block.getLocation();
+            long respawnTicks = getConfig().getLong("settings.respawn-minutes", 5) * 60 * 20;
+            
+            new BukkitRunnable() {
+                @Override
+                public void run() {
+                    // Yangi tasodifiy tur bilan qayta tiklaymiz
+                    String newType = allTypes.get(new Random().nextInt(allTypes.size()));
+                    spawnShulker(respawnLoc, newType);
+                }
+            }.runTaskLater(this, respawnTicks);
         }
     }
 
@@ -235,6 +239,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }
     }
 
+    // --- OSonLASHTIRILGAN MENYU (GUI) ---
     @EventHandler
     public void onMenuClick(InventoryClickEvent event) {
         String title = event.getView().getTitle();
@@ -254,6 +259,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             return;
         }
 
+        // Narsa qo'shish (Chest tugmasi)
         if (clicked.getType() == Material.CHEST) { 
             ItemStack hand = player.getInventory().getItemInMainHand();
             if (hand.getType() == Material.AIR) {
@@ -267,29 +273,47 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             loots.set("loots." + type, list);
             try { loots.save(new File(getDataFolder(), "loots.yml")); } catch (Exception ignored) {}
             
-            player.sendMessage(color("&a" + hand.getType().name() + " 50% foiz bilan qo'shildi!"));
+            player.sendMessage(color("&a" + hand.getType().name() + " 50% bilan qo'shildi!"));
             openLootMenu(player, type); 
             return;
         }
 
+        // Lootni tahrirlash yoki o'chirish
         if (clicked.getType() != Material.CHEST && clicked.getType() != Material.BARRIER && event.getSlot() < 45) {
             FileConfiguration loots = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "loots.yml"));
             List<String> list = loots.getStringList("loots." + type);
             
-            int indexToRemove = -1;
+            int index = -1;
             for (int i = 0; i < list.size(); i++) {
-                String matName = list.get(i).split(":")[0];
-                if (matName.equals(clicked.getType().name())) {
-                    indexToRemove = i;
+                if (list.get(i).split(":")[0].equals(clicked.getType().name())) {
+                    index = i;
                     break;
                 }
             }
             
-            if (indexToRemove != -1) {
-                list.remove(indexToRemove);
+            if (index != -1) {
+                String[] parts = list.get(index).split(":");
+                int currentChance = Integer.parseInt(parts[2]);
+
+                // O'NG TUGMA - O'CHIRISH
+                if (event.getClick() == ClickType.RIGHT || event.getClick() == ClickType.SHIFT_RIGHT) {
+                    list.remove(index);
+                    player.sendMessage(color("&cLoot o'chirildi!"));
+                } 
+                // CHAP TUGMA - FOIZNI O'ZGARTIRISH
+                else if (event.getClick() == ClickType.LEFT || event.getClick() == ClickType.SHIFT_LEFT) {
+                    if (currentChance == 10) currentChance = 25;
+                    else if (currentChance == 25) currentChance = 50;
+                    else if (currentChance == 50) currentChance = 75;
+                    else if (currentChance == 75) currentChance = 100;
+                    else currentChance = 10;
+                    
+                    list.set(index, parts[0] + ":" + parts[1] + ":" + currentChance);
+                    player.sendMessage(color("&aFoiz o'zgartirildi: " + currentChance + "%"));
+                }
+                
                 loots.set("loots." + type, list);
                 try { loots.save(new File(getDataFolder(), "loots.yml")); } catch (Exception ignored) {}
-                player.sendMessage(color("&cLoot o'chirildi!"));
                 openLootMenu(player, type);
             }
         }
@@ -305,15 +329,20 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         int slot = 0;
         for (String itemStr : items) {
             String[] parts = itemStr.split(":");
-            if (parts.length == 3) {
+            if (parts.length == 3 && slot < 45) {
                 Material mat = Material.getMaterial(parts[0].toUpperCase());
                 int amount = Integer.parseInt(parts[1]);
                 int chance = Integer.parseInt(parts[2]);
-                if (mat != null && slot < 45) {
+                if (mat != null) {
                     ItemStack item = new ItemStack(mat, amount);
                     ItemMeta meta = item.getItemMeta();
                     meta.setDisplayName(color("&e" + mat.name()));
-                    meta.setLore(Arrays.asList(color("&fFoiz: &a" + chance + "%"), color("&cO'chirish uchun bosing!")));
+                    meta.setLore(Arrays.asList(
+                            color("&fTushish foizi: &a" + chance + "%"),
+                            color("&7 "),
+                            color("&eChap tugma &7- Foizni o'zgartirish"),
+                            color("&cO'ng tugma &7- O'chirish")
+                    ));
                     item.setItemMeta(meta);
                     inv.setItem(slot++, item);
                 }
@@ -323,7 +352,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         ItemStack addBtn = new ItemStack(Material.CHEST);
         ItemMeta addMeta = addBtn.getItemMeta();
         addMeta.setDisplayName(color("&aYangi Loot Qo'shish"));
-        addMeta.setLore(Arrays.asList(color("&fQo'lizda narsani ushlab bosing."), color("&fAvtomatik 50% bo'ladi.")));
+        addMeta.setLore(Arrays.asList(color("&fQo'lingizda narsani ushlab bosing."), color("&fAvtomatik 50% qilib qo'shiladi.")));
         addBtn.setItemMeta(addMeta);
         inv.setItem(49, addBtn);
 
@@ -368,7 +397,8 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
 
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
             p.sendMessage(ChatColor.GOLD + "========== CapCastle ==========");
-            p.sendMessage(ChatColor.YELLOW + "/capcastle setloc <tur> " + ChatColor.WHITE + "- Quti qo'yish");
+            p.sendMessage(ChatColor.YELLOW + "/capcastle setspawn " + ChatColor.WHITE + "- Tasodifiy shalker qo'yish");
+            p.sendMessage(ChatColor.YELLOW + "/capcastle setloc <tur> " + ChatColor.WHITE + "- Ma'lum turdagi quti qo'yish");
             p.sendMessage(ChatColor.YELLOW + "/capcastle start " + ChatColor.WHITE + "- Eventni boshlash");
             p.sendMessage(ChatColor.YELLOW + "/capcastle stop " + ChatColor.WHITE + "- To'xtatish");
             p.sendMessage(ChatColor.YELLOW + "/capcastle menu <tur> " + ChatColor.WHITE + "- Lootlarni sozlash");
@@ -378,6 +408,19 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }
 
         switch (args[0].toLowerCase()) {
+            // YANGI KOMANDA: Tasodifiy quti chiqarish
+            case "setspawn":
+                Location pLoc = p.getLocation();
+                String locStrRandom = pLoc.getWorld().getName() + ":" + pLoc.getX() + ":" + pLoc.getY() + ":" + pLoc.getZ() + ":random";
+                List<String> locsRandom = getConfig().getStringList("spawn-locations");
+                locsRandom.add(locStrRandom);
+                getConfig().set("spawn-locations", locsRandom);
+                saveConfig();
+                
+                spawnShulker(pLoc, "random");
+                p.sendMessage(color("&aJoy saqlandi va tasodifiy shalker qo'yildi!"));
+                break;
+
             case "setloc":
                 if (args.length < 2) {
                     p.sendMessage(color("&cTurini yozing! Masalan: /capcastle setloc qonli"));
@@ -397,16 +440,16 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
                 getConfig().set("spawn-locations", locs);
                 saveConfig();
                 
-                p.sendMessage(color("&aJoy saqlandi! Turi: " + type + ". Ko'rish uchun /capcastle start qiling."));
+                spawnShulker(playerLoc, type);
+                p.sendMessage(color("&aJoy saqlandi! Turi: " + type));
                 break;
                 
             case "start":
-                startEvent();
-                p.sendMessage(color("&aEvent boshlandi! Qutilar chiqdi."));
+                loadInitialBlocks();
+                p.sendMessage(color("&aEvent boshlandi! Barcha qutilar yuklandi."));
                 break;
                 
             case "stop":
-                eventActive = false;
                 for (String lStr : activeBlocks) {
                     Location l = stringToLocation(lStr);
                     if (l != null) l.getBlock().setType(Material.AIR);
@@ -416,7 +459,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
                     }
                 }
                 activeBlocks.clear();
-                p.sendMessage(color("&cEvent to'xtatildi va qutilar o'chirildi."));
+                p.sendMessage(color("&cBarcha qutilar o'chirildi."));
                 break;
                 
             case "menu":
