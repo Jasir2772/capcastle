@@ -36,7 +36,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
     private final Map<UUID, String> editingLoot = new HashMap<>();
     
     private final List<String> allTypes = Arrays.asList("oddiy", "sehrli", "qonli", "afsonaviy", "qora_imperator");
-    private boolean eventActive = true; // Event yoqilganligini tekshirish uchun
+    private boolean eventActive = true;
 
     @Override
     public void onEnable() {
@@ -67,9 +67,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }.runTaskTimer(this, 0L, 10L); 
     }
 
-    // HAMMA NARSANI TOZALASH VA QAYTA YUKLASH
     private void loadInitialBlocks() {
-        // 1. Avval barcha eski shalker va yozuvlarni o'chiramiz
         for (String locStr : activeBlocks) {
             Location loc = stringToLocation(locStr);
             if (loc != null && loc.getBlock().getType() != Material.AIR) {
@@ -82,7 +80,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         blockTypes.clear();
         holograms.clear();
 
-        // 2. Configdan joylarni o'qib, yangidan qo'yamiz
         List<String> rawLocs = getConfig().getStringList("spawn-locations");
         for (String rawLoc : rawLocs) {
             String[] parts = rawLoc.split(":");
@@ -108,7 +105,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
 
         String locStr = locationToString(loc);
         
-        // Agar bu joyda allaqachon shalker bo'lsa, uni tozalaymiz
         if (activeBlocks.contains(locStr)) {
             loc.getBlock().setType(Material.AIR);
             removeHolograms(locStr);
@@ -136,12 +132,14 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             holograms.remove(locStr);
         }
         
-        // Qo'shimcha xavfsizlik: Atrofdagi barcha keraksiz ArmorStand'larni o'chirish
         Location loc = stringToLocation(locStr);
         if (loc != null) {
             for (Entity e : loc.getWorld().getNearbyEntities(loc, 2, 2, 2)) {
-                if (e instanceof ArmorStand && !e.isVisible()) {
-                    e.remove();
+                if (e instanceof ArmorStand) {
+                    ArmorStand as = (ArmorStand) e;
+                    if (!as.isVisible()) {
+                        as.remove();
+                    }
                 }
             }
         }
@@ -223,7 +221,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         updateHologram(locStr, type, currentHits);
 
         if (currentHits >= maxHits) {
-            // 1. Shalkerni va yozuvlarni tozalash
             activeBlocks.remove(locStr);
             blockHits.remove(locStr);
             blockTypes.remove(locStr);
@@ -240,16 +237,13 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             
             Bukkit.broadcastMessage(color(brokenMsg));
 
-            // 2. 5 daqiqadan keyin QAYTA TIKLASH (Faqat event yoqilgan bo'lsa)
             Location respawnLoc = block.getLocation();
             long respawnTicks = getConfig().getLong("settings.respawn-minutes", 5) * 60 * 20;
             
             new BukkitRunnable() {
                 @Override
                 public void run() {
-                    if (!eventActive) return; // Agar event to'xtatilgan bo'lsa, qayta tiklamaymiz
-                    
-                    // Tasodifiy yangi turni tanlaymiz
+                    if (!eventActive) return;
                     String newType = allTypes.get(new Random().nextInt(allTypes.size()));
                     spawnShulker(respawnLoc, newType);
                 }
@@ -276,7 +270,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }
     }
 
-    // --- GUI (MENU) TIZIMI ---
     @EventHandler
     public void onMenuClick(InventoryClickEvent event) {
         String title = event.getView().getTitle();
@@ -296,7 +289,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             return;
         }
 
-        // HAMMA NARSANI QO'SHISH
         if (clicked.getType() == Material.CHEST) { 
             FileConfiguration loots = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "loots.yml"));
             List<String> list = loots.getStringList("loots." + type);
@@ -335,7 +327,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             return;
         }
 
-        // O'CHIRISH YOKI FOIZNI O'ZGARTIRISH
         if (clicked.getType() != Material.CHEST && clicked.getType() != Material.BARRIER && event.getSlot() < 45) {
             FileConfiguration loots = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "loots.yml"));
             List<String> list = loots.getStringList("loots." + type);
@@ -468,7 +459,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
                 String locStrRandom = pLoc.getWorld().getName() + ":" + pLoc.getX() + ":" + pLoc.getY() + ":" + pLoc.getZ() + ":random";
                 List<String> locsRandom = getConfig().getStringList("spawn-locations");
                 
-                // Agar bu joy configda yo'q bo'lsa qo'shamiz
                 if (!locsRandom.contains(locStrRandom)) {
                     locsRandom.add(locStrRandom);
                     getConfig().set("spawn-locations", locsRandom);
@@ -556,4 +546,4 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         matcher.appendTail(buffer);
         return net.md_5.bungee.api.ChatColor.translateAlternateColorCodes('&', buffer.toString());
     }
-    }
+                 }
