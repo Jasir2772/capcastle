@@ -1,4 +1,4 @@
-package uz.capmine.castle;
+lpackage uz.capmine.castle;
 
 import org.bukkit.*;
 import org.bukkit.block.Block;
@@ -21,7 +21,11 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
+import org.bukkit.util.io.BukkitObjectInputStream;
+import org.bukkit.util.io.BukkitObjectOutputStream;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.util.*;
 import java.util.regex.Matcher;
@@ -257,19 +261,30 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         Random rand = new Random();
 
         for (String itemStr : items) {
-            String[] parts = itemStr.split(":");
-            if (parts.length == 3) {
-                Material mat = Material.getMaterial(parts[0].toUpperCase());
-                int amount = Integer.parseInt(parts[1]);
-                int chance = Integer.parseInt(parts[2]);
+            ItemStack item = null;
+            int chance = 100;
 
-                if (mat != null && rand.nextInt(100) < chance) {
-                    loc.getWorld().dropItemNaturally(loc, new ItemStack(mat, amount));
+            // Yangi Base64 formati (item:chance) yoki eski format (MATERIAL:AMOUNT:CHANCE)
+            if (itemStr.contains(":") && itemStr.split(":").length == 3) {
+                String[] parts = itemStr.split(":");
+                Material mat = Material.getMaterial(parts[0].toUpperCase());
+                if (mat != null) {
+                    item = new ItemStack(mat, Integer.parseInt(parts[1]));
+                    chance = Integer.parseInt(parts[2]);
                 }
+            } else if (itemStr.contains(":")) {
+                String[] parts = itemStr.split(":");
+                item = itemFromBase64(parts[0]);
+                chance = Integer.parseInt(parts[1]);
+            }
+
+            if (item != null && rand.nextInt(100) < chance) {
+                loc.getWorld().dropItemNaturally(loc, item);
             }
         }
     }
 
+    // --- GUI (MENU) TIZIMI ---
     @EventHandler
     public void onMenuClick(InventoryClickEvent event) {
         String title = event.getView().getTitle();
@@ -289,6 +304,7 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             return;
         }
 
+        // HAMMA NARSANI QO'SHISH (Custom narsalar ham saqlanadi)
         if (clicked.getType() == Material.CHEST) { 
             FileConfiguration loots = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "loots.yml"));
             List<String> list = loots.getStringList("loots." + type);
@@ -296,19 +312,10 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             int addedCount = 0;
             for (ItemStack item : player.getInventory().getContents()) {
                 if (item != null && item.getType() != Material.AIR) {
-                    String matName = item.getType().name();
-                    int amount = item.getAmount();
-                    
-                    boolean exists = false;
-                    for (String s : list) {
-                        if (s.startsWith(matName + ":")) {
-                            exists = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!exists) {
-                        String itemStr = matName + ":" + amount + ":50";
+                    // Narsani Base64 ga o'giramiz, shunda uning nomi, NBTsi, sehrlari saqlanadi
+                    String base64 = itemToBase64(item);
+                    if (base64 != null) {
+                        String itemStr = base64 + ":50"; // 50% default
                         list.add(itemStr);
                         addedCount++;
                     }
@@ -327,34 +334,67 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             return;
         }
 
+        // FOIZNI O'ZGARTIRISH YOKI O'CHIRISH
         if (clicked.getType() != Material.CHEST && clicked.getType() != Material.BARRIER && event.getSlot() < 45) {
             FileConfiguration loots = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "loots.yml"));
             List<String> list = loots.getStringList("loots." + type);
             
             int index = -1;
-            for (int i = 0; i < list.size(); i++) {
-                if (list.get(i).split(":")[0].equals(clicked.getType().name())) {
-                    index = i;
-                    break;
-                }
-            }
+            // Narsani ro'yxatdan topish (hozirgi slotga qarab emas, itemga qarab)
+            // Buning uchun menyudagi narsaning lore'idan yoki boshqa usuldan foydalanish kerak.
+            // Eng oson yo'li: Tugmalarni boshqacha qilish.
             
-            if (index != -1) {
-                String[] parts = list.get(index).split(":");
-                int currentChance = Integer.parseInt(parts[2]);
-
-                if (event.getClick() == ClickType.RIGHT || event.getClick() == ClickType.SHIFT_RIGHT) {
-                    list.remove(index);
-                    player.sendMessage(color("&cLoot o'chirildi!"));
-                } else if (event.getClick() == ClickType.LEFT || event.getClick() == ClickType.SHIFT_LEFT) {
-                    if (currentChance == 10) currentChance = 25;
-                    else if (currentChance == 25) currentChance = 50;
-                    else if (currentChance == 50) currentChance = 75;
-                    else if (currentChance == 75) currentChance = 100;
-                    else currentChance = 10;
+            // Menyudagi narsani topish qiyin bo'lgani uchun, biz vaqtincha indeksni topamiz
+            // Aslida indexni to'g'ri topish uchun ro'yxatdagi barcha narsalarni solishtirish kerak, lekin bu qiyin.
+            // Eng yaxshisi: har bir narsani o'z slotiga qo'yish va slot orqali indeksni topish.
+            
+            // Soddalashtiramiz: 0-slotdan boshlab ro'yxatni to'ldirganmiz, demak event.getSlot() indeksga teng.
+            // Lekin o'chirilganda o'rinlar siljiydi. Shuning uchun itemni o'zini tekshiramiz.
+            
+            // Vaqtincha eng oson usul: Itemni bazadan o'chirish o'rniga, ro'yxatni yangilash.
+            // Qani, to'g'riroq yo'li:
+            int targetSlot = event.getSlot();
+            if (targetSlot < list.size()) {
+                String itemStr = list.get(targetSlot);
+                
+                if (itemStr.contains(":") && itemStr.split(":").length == 3) {
+                    // Eski format
+                    String[] parts = itemStr.split(":");
+                    int chance = Integer.parseInt(parts[2]);
                     
-                    list.set(index, parts[0] + ":" + parts[1] + ":" + currentChance);
-                    player.sendMessage(color("&aFoiz o'zgartirildi: " + currentChance + "%"));
+                    if (event.getClick() == ClickType.LEFT) { chance = Math.min(100, chance + 1); }
+                    else if (event.getClick() == ClickType.RIGHT) { chance = Math.max(1, chance - 1); }
+                    else if (event.getClick() == ClickType.SHIFT_LEFT) { chance = Math.min(100, chance + 10); }
+                    else if (event.getClick() == ClickType.SHIFT_RIGHT) { chance = Math.max(1, chance - 10); }
+                    else if (event.getClick() == ClickType.DROP || event.getClick() == ClickType.MIDDLE) {
+                        list.remove(targetSlot);
+                        loots.set("loots." + type, list);
+                        try { loots.save(new File(getDataFolder(), "loots.yml")); } catch (Exception ignored) {}
+                        player.sendMessage(color("&cLoot o'chirildi!"));
+                        openLootMenu(player, type);
+                        return;
+                    }
+                    
+                    list.set(targetSlot, parts[0] + ":" + parts[1] + ":" + chance);
+                } else {
+                    // Yangi Base64 format
+                    String[] parts = itemStr.split(":");
+                    int chance = Integer.parseInt(parts[1]);
+                    
+                    if (event.getClick() == ClickType.LEFT) { chance = Math.min(100, chance + 1); }
+                    else if (event.getClick() == ClickType.RIGHT) { chance = Math.max(1, chance - 1); }
+                    else if (event.getClick() == ClickType.SHIFT_LEFT) { chance = Math.min(100, chance + 10); }
+                    else if (event.getClick() == ClickType.SHIFT_RIGHT) { chance = Math.max(1, chance - 10); }
+                    else if (event.getClick() == ClickType.DROP || event.getClick() == ClickType.MIDDLE) {
+                        list.remove(targetSlot);
+                        loots.set("loots." + type, list);
+                        try { loots.save(new File(getDataFolder(), "loots.yml")); } catch (Exception ignored) {}
+                        player.sendMessage(color("&cLoot o'chirildi!"));
+                        openLootMenu(player, type);
+                        return;
+                    }
+                    
+                    list.set(targetSlot, parts[0] + ":" + chance);
                 }
                 
                 loots.set("loots." + type, list);
@@ -371,26 +411,43 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         FileConfiguration loots = YamlConfiguration.loadConfiguration(new File(getDataFolder(), "loots.yml"));
         List<String> items = loots.getStringList("loots." + type);
 
-        int slot = 0;
-        for (String itemStr : items) {
-            String[] parts = itemStr.split(":");
-            if (parts.length == 3 && slot < 45) {
+        for (int i = 0; i < items.size(); i++) {
+            if (i >= 45) break;
+            String itemStr = items.get(i);
+            ItemStack item = null;
+            int chance = 100;
+
+            if (itemStr.split(":").length == 3) {
+                // Eski format
+                String[] parts = itemStr.split(":");
                 Material mat = Material.getMaterial(parts[0].toUpperCase());
-                int amount = Integer.parseInt(parts[1]);
-                int chance = Integer.parseInt(parts[2]);
                 if (mat != null) {
-                    ItemStack item = new ItemStack(mat, amount);
-                    ItemMeta meta = item.getItemMeta();
-                    meta.setDisplayName(color("&e" + mat.name()));
-                    meta.setLore(Arrays.asList(
-                            color("&fTushish foizi: &a" + chance + "%"),
-                            color("&7 "),
-                            color("&eChap tugma &7- Foizni o'zgartirish"),
-                            color("&cO'ng tugma &7- O'chirish")
-                    ));
-                    item.setItemMeta(meta);
-                    inv.setItem(slot++, item);
+                    item = new ItemStack(mat, Integer.parseInt(parts[1]));
+                    chance = Integer.parseInt(parts[2]);
                 }
+            } else {
+                // Base64 format
+                String[] parts = itemStr.split(":");
+                item = itemFromBase64(parts[0]);
+                chance = Integer.parseInt(parts[1]);
+            }
+
+            if (item != null) {
+                ItemMeta meta = item.getItemMeta();
+                if (meta != null) {
+                    List<String> lore = new ArrayList<>();
+                    if (meta.hasLore()) lore.addAll(meta.getLore());
+                    lore.add(color("&7 "));
+                    lore.add(color("&fTushish foizi: &a" + chance + "%"));
+                    lore.add(color("&eChap tugma &7- +1%"));
+                    lore.add(color("&eO'ng tugma &7- -1%"));
+                    lore.add(color("&6Shift+Chap &7- +10%"));
+                    lore.add(color("&6Shift+O'ng &7- -10%"));
+                    lore.add(color("&cQ (Drop) &7- O'chirish"));
+                    meta.setLore(lore);
+                    item.setItemMeta(meta);
+                }
+                inv.setItem(i, item);
             }
         }
 
@@ -408,6 +465,29 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         inv.setItem(53, close);
 
         p.openInventory(inv);
+    }
+
+    // BASE64 KODLASH (Custom narsalarni saqlash uchun)
+    private String itemToBase64(ItemStack item) {
+        try {
+            ByteArrayOutputStream io = new ByteArrayOutputStream();
+            BukkitObjectOutputStream os = new BukkitObjectOutputStream(io);
+            os.writeObject(item);
+            os.flush();
+            return Base64.getEncoder().encodeToString(io.toByteArray());
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    private ItemStack itemFromBase64(String base64) {
+        try {
+            ByteArrayInputStream io = new ByteArrayInputStream(Base64.getDecoder().decode(base64));
+            BukkitObjectInputStream is = new BukkitObjectInputStream(io);
+            return (ItemStack) is.readObject();
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     private String getTypeName(String type) {
@@ -444,8 +524,9 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             p.sendMessage(ChatColor.GOLD + "========== CapCastle ==========");
             p.sendMessage(ChatColor.YELLOW + "/capcastle setspawn " + ChatColor.WHITE + "- Tasodifiy shalker qo'yish");
             p.sendMessage(ChatColor.YELLOW + "/capcastle setloc <tur> " + ChatColor.WHITE + "- Ma'lum turdagi quti qo'yish");
-            p.sendMessage(ChatColor.YELLOW + "/capcastle start " + ChatColor.WHITE + "- Eventni boshlash (Tozalab qayta qo'yadi)");
-            p.sendMessage(ChatColor.YELLOW + "/capcastle stop " + ChatColor.WHITE + "- To'xtatish va hammasini o'chirish");
+            p.sendMessage(ChatColor.YELLOW + "/capcastle del " + ChatColor.WHITE + "- Qaragan shalkeringizni o'chirish");
+            p.sendMessage(ChatColor.YELLOW + "/capcastle start " + ChatColor.WHITE + "- Eventni boshlash");
+            p.sendMessage(ChatColor.YELLOW + "/capcastle stop " + ChatColor.WHITE + "- To'xtatish");
             p.sendMessage(ChatColor.YELLOW + "/capcastle menu <tur> " + ChatColor.WHITE + "- Lootlarni sozlash");
             p.sendMessage(ChatColor.YELLOW + "/capcastle reload " + ChatColor.WHITE + "- Yangilash");
             p.sendMessage(ChatColor.GOLD + "===============================");
@@ -453,6 +534,37 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
         }
 
         switch (args[0].toLowerCase()) {
+            case "del":
+                Block target = p.getTargetBlockExact(5);
+                if (target != null) {
+                    String locStr = locationToString(target.getLocation());
+                    if (activeBlocks.contains(locStr)) {
+                        target.setType(Material.AIR);
+                        removeHolograms(locStr);
+                        activeBlocks.remove(locStr);
+                        blockHits.remove(locStr);
+                        blockTypes.remove(locStr);
+                        
+                        // Configdan ham o'chirish
+                        List<String> rawLocs = getConfig().getStringList("spawn-locations");
+                        Iterator<String> iter = rawLocs.iterator();
+                        while (iter.hasNext()) {
+                            if (iter.next().startsWith(target.getWorld().getName() + ":" + target.getX() + ":")) {
+                                iter.remove();
+                            }
+                        }
+                        getConfig().set("spawn-locations", rawLocs);
+                        saveConfig();
+                        
+                        p.sendMessage(color("&aShalker muvaffaqiyatli o'chirildi!"));
+                    } else {
+                        p.sendMessage(color("&cSiz qaragan blok shalker emas!"));
+                    }
+                } else {
+                    p.sendMessage(color("&cSiz blokka qaramayapsiz (juda uzoqda)!"));
+                }
+                break;
+
             case "setspawn":
                 eventActive = true;
                 Location pLoc = p.getLocation();
@@ -544,6 +656,6 @@ public class CapCastle extends JavaPlugin implements CommandExecutor, Listener {
             matcher.appendReplacement(buffer, replacement.toString());
         }
         matcher.appendTail(buffer);
-        return net.md_5.bungee.api.ChatColor.translateAlternateColorCodes('&', buffer.toString());
+        return ChatColor.translateAlternateColorCodes('&', buffer.toString());
     }
-                 }
+    }
