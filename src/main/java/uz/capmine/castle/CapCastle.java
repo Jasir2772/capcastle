@@ -1,4 +1,4 @@
-lpackage uz.capmine.castle;
+package uz.capmine.castle;
 
 import org.bukkit.*;
 import org.bukkit.block.Block;
